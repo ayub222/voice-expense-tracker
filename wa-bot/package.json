@@ -1,0 +1,15 @@
+{
+  "name": "voice-expense-wa-bot",
+  "version": "1.0.0",
+  "description": "Free WhatsApp Bot (Voice Note & Text) for Voice Expense Tracker AI (Ayub - 0895374884648)",
+  "type": "module",
+  "main": "bot.js",
+  "scripts": {
+    "start": "node bot.js"
+  },
+  "dependencies": {
+    "@whiskeysockets/baileys": "^6.7.9",
+    "pino": "^9.5.0",
+    "qrcode-terminal": "^0.12.0"
+  }
+}
