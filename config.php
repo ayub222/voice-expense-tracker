@@ -160,16 +160,19 @@ function getDb(): PDO
         $dsn = getenv('DB_DSN') ?: 'mysql:host=127.0.0.1;port=3306;charset=utf8mb4';
         $dbUser = getenv('DB_USER') ?: 'root';
         $dbPass = getenv('DB_PASS') ?: '';
-        $pdo = new PDO(
-            $dsn,
-            $dbUser,
-            $dbPass,
-            [
-                PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION,
-                PDO::ATTR_DEFAULT_FETCH_MODE => PDO::FETCH_ASSOC,
-                PDO::ATTR_EMULATE_PREPARES => false,
-            ]
-        );
+        $options = [
+            PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION,
+            PDO::ATTR_DEFAULT_FETCH_MODE => PDO::FETCH_ASSOC,
+            PDO::ATTR_EMULATE_PREPARES => false,
+        ];
+        // Enable TLS/SSL for cloud MySQL / TiDB Serverless when DB_DSN is configured
+        if (getenv('DB_DSN') && defined('PDO::MYSQL_ATTR_SSL_VERIFY_SERVER_CERT')) {
+            $options[PDO::MYSQL_ATTR_SSL_VERIFY_SERVER_CERT] = false;
+            if (is_file('/etc/ssl/certs/ca-certificates.crt')) {
+                $options[PDO::MYSQL_ATTR_SSL_CA] = '/etc/ssl/certs/ca-certificates.crt';
+            }
+        }
+        $pdo = new PDO($dsn, $dbUser, $dbPass, $options);
         if (!getenv('DB_DSN')) {
             $pdo->exec('CREATE DATABASE IF NOT EXISTS `voice_expense_db` CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci');
             $pdo->exec('USE `voice_expense_db`');
