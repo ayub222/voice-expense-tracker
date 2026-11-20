@@ -23,7 +23,11 @@ const ALLOWED_FILE = path.join(STORAGE_DIR, "allowed_numbers.json");
 const TARGET_PHONE = "62895374884648";
 const TARGET_DISPLAY = "0895374884648";
 const KNOWN_SELF_LID = "257681076023469@lid";
-const API_ENDPOINT = process.env.API_ENDPOINT || "http://localhost/voice-expense-tracker/api.php?action=whatsapp_webhook";
+const API_BASE = process.env.API_BASE || "https://voice-expense-tracker-olive.vercel.app/api.php";
+const API_ENDPOINT = process.env.API_ENDPOINT || `${API_BASE}?action=whatsapp_webhook`;
+const USERS_ENDPOINT = `${API_BASE}?action=users`;
+
+let cachedAllowedPhones = new Set([TARGET_PHONE]);
 
 function normalizePhone(raw) {
   const d = String(raw || "").replace(/\D+/g, "");
@@ -33,18 +37,42 @@ function normalizePhone(raw) {
   return d;
 }
 
+async function syncAllowedFromCloud() {
+  try {
+    const res = await fetch(USERS_ENDPOINT, { signal: AbortSignal.timeout(8000) });
+    if (!res.ok) return;
+    const json = await res.json();
+    if (json?.ok && Array.isArray(json.allowed_users)) {
+      const active = json.allowed_users.filter((u) => u.is_active);
+      cachedAllowedPhones = new Set(active.map((u) => normalizePhone(u.whatsapp_number)).filter(Boolean));
+      cachedAllowedPhones.add(TARGET_PHONE);
+      fs.writeFileSync(
+        ALLOWED_FILE,
+        JSON.stringify({ updated_at: new Date().toISOString(), allowed: active.map((u) => ({ id: u.id, name: u.name, phone: u.whatsapp_number })) }, null, 2),
+        "utf8"
+      );
+    }
+  } catch {
+    // Keep existing cachedAllowedPhones on network blip
+  }
+}
+
+syncAllowedFromCloud();
+setInterval(syncAllowedFromCloud, 15000);
+
 function getAllowedPhonesSet() {
   try {
     if (fs.existsSync(ALLOWED_FILE)) {
       const data = JSON.parse(fs.readFileSync(ALLOWED_FILE, "utf8"));
       if (Array.isArray(data?.allowed)) {
-        return new Set(data.allowed.map((u) => normalizePhone(u.phone)).filter(Boolean));
+        const s = new Set(data.allowed.map((u) => normalizePhone(u.phone)).filter(Boolean));
+        if (s.size > 0) return s;
       }
     }
   } catch {
-    // Fallback to default owner phone
+    // Fallback to in-memory cloud cache
   }
-  return new Set([TARGET_PHONE]);
+  return cachedAllowedPhones;
 }
 
 const silentLogger = pino({ level: "silent" });
@@ -334,7 +362,7 @@ async function startBot() {
             key: msg.key,
             message: { audioMessage: audioMsg },
           };
-          const buffer = await downloadMediaMessage(
+          const downloadPromise = downloadMediaMessage(
             msgForDownload,
             "buffer",
             {},
@@ -343,21 +371,23 @@ async function startBot() {
               reuploadRequest: sock.updateMediaMessage,
             }
           );
-          const tmpAudio = path.join(STORAGE_DIR, `wa_vn_${Date.now()}.ogg`);
-          fs.writeFileSync(tmpAudio, buffer);
-          console.log(`🎙️ Voice Note berhasil diunduh (${buffer.length} bytes) -> mengirim ke Groq Whisper...`);
+          const timeoutPromise = new Promise((_, reject) =>
+            setTimeout(() => reject(new Error("Timeout 15s saat mengunduh Voice Note dari server WhatsApp")), 15000)
+          );
+          const buffer = await Promise.race([downloadPromise, timeoutPromise]);
+          console.log(`🎙️ Voice Note berhasil diunduh (${buffer.length} bytes) -> mengirim ke Vercel + Groq Whisper...`);
 
           const res = await fetch(API_ENDPOINT, {
             method: "POST",
             headers: { "Content-Type": "application/json" },
+            signal: AbortSignal.timeout(30000),
             body: JSON.stringify({
-              audio_path: tmpAudio,
+              audio_base64: buffer.toString("base64"),
               phone: matchedPhone,
               source: "whatsapp-vn",
             }),
           });
           const data = await res.json();
-          try { fs.unlinkSync(tmpAudio); } catch {}
 
           console.log(`✅ Hasil AI Voice Note (${matchedPhone}):`, JSON.stringify(data).slice(0, 240));
 
@@ -370,6 +400,7 @@ async function startBot() {
           const res = await fetch(API_ENDPOINT, {
             method: "POST",
             headers: { "Content-Type": "application/json" },
+            signal: AbortSignal.timeout(25000),
             body: JSON.stringify({
               text: textMsg,
               phone: matchedPhone,
@@ -383,7 +414,7 @@ async function startBot() {
           }
         }
       } catch (err) {
-        console.error("WA message handler error:", err);
+        console.error("WA message handler error:", err.message || err);
       }
     }
   });

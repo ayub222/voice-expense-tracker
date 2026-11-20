@@ -139,15 +139,37 @@ try {
         $phone = (string)($jsonBody['phone'] ?? $jsonBody['sender'] ?? $_POST['phone'] ?? DEFAULT_WA_NUMBER);
         $inputText = trim((string)($jsonBody['text'] ?? $jsonBody['message'] ?? $_POST['text'] ?? ''));
         $audioPath = (string)($jsonBody['audio_path'] ?? $_POST['audio_path'] ?? '');
+        $audioBase64 = (string)($jsonBody['audio_base64'] ?? $_POST['audio_base64'] ?? '');
         $transcriptionModel = null;
 
-        // 1. Handle uploaded audio file (from browser mic, Flutter app, or WA bot)
+        // 1. Handle uploaded audio file or base64 audio (from browser mic, Flutter app, or WA bot -> Vercel)
         if (!empty($_FILES['audio']['tmp_name']) && is_uploaded_file($_FILES['audio']['tmp_name'])) {
             $ext = pathinfo((string)($_FILES['audio']['name'] ?? 'voice.ogg'), PATHINFO_EXTENSION) ?: 'ogg';
             $dest = STORAGE_DIR . DIRECTORY_SEPARATOR . 'voice_' . time() . '_' . mt_rand(100, 999) . '.' . $ext;
             move_uploaded_file($_FILES['audio']['tmp_name'], $dest);
             $mime = (string)($_FILES['audio']['type'] ?? 'audio/ogg');
             $tr = transcribeAudioFile($dest, $mime);
+            @unlink($dest);
+
+            if (!$tr['ok']) {
+                echo json_encode([
+                    'ok' => false,
+                    'error' => $tr['error'],
+                    'whatsapp_reply' => null,
+                ], JSON_UNESCAPED_UNICODE);
+                exit;
+            }
+            $inputText = (string)$tr['text'];
+            $transcriptionModel = $tr['model'] ?? 'whisper-large-v3-turbo';
+        } elseif ($audioBase64 !== '') {
+            $decodedAudio = base64_decode($audioBase64, true);
+            if ($decodedAudio === false || $decodedAudio === '') {
+                echo json_encode(['ok' => false, 'error' => 'Format audio_base64 tidak valid.', 'whatsapp_reply' => null], JSON_UNESCAPED_UNICODE);
+                exit;
+            }
+            $dest = STORAGE_DIR . DIRECTORY_SEPARATOR . 'voice_b64_' . time() . '_' . mt_rand(100, 999) . '.ogg';
+            file_put_contents($dest, $decodedAudio);
+            $tr = transcribeAudioFile($dest, 'audio/ogg');
             @unlink($dest);
 
             if (!$tr['ok']) {
