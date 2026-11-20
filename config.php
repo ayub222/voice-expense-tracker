@@ -166,10 +166,14 @@ function getDb(): PDO
             PDO::ATTR_EMULATE_PREPARES => false,
         ];
         // Enable TLS/SSL for cloud MySQL / TiDB Serverless when DB_DSN is configured
-        if (getenv('DB_DSN') && defined('PDO::MYSQL_ATTR_SSL_VERIFY_SERVER_CERT')) {
-            $options[PDO::MYSQL_ATTR_SSL_VERIFY_SERVER_CERT] = false;
-            if (is_file('/etc/ssl/certs/ca-certificates.crt')) {
+        if (getenv('DB_DSN') && defined('PDO::MYSQL_ATTR_SSL_CA')) {
+            $bundledCa = __DIR__ . DIRECTORY_SEPARATOR . 'certs' . DIRECTORY_SEPARATOR . 'isrgrootx1.pem';
+            if (is_file($bundledCa)) {
+                $options[PDO::MYSQL_ATTR_SSL_CA] = $bundledCa;
+                $options[PDO::MYSQL_ATTR_SSL_VERIFY_SERVER_CERT] = true;
+            } elseif (is_file('/etc/ssl/certs/ca-certificates.crt')) {
                 $options[PDO::MYSQL_ATTR_SSL_CA] = '/etc/ssl/certs/ca-certificates.crt';
+                $options[PDO::MYSQL_ATTR_SSL_VERIFY_SERVER_CERT] = false;
             }
         }
         $pdo = new PDO($dsn, $dbUser, $dbPass, $options);
