@@ -461,6 +461,7 @@ if (HEALTH_PORT > 0) {
           uptime_sec: Math.floor(process.uptime()),
           connected: Boolean(status.connected),
           state: status.state || "unknown",
+          pairing_code: status.pairing_code || null,
         })
       );
     })
