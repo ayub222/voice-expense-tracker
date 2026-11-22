@@ -14,6 +14,81 @@ header('Content-Type: application/json; charset=utf-8');
 
 require_once __DIR__ . '/ai_service.php';
 
+function httpRequestSimple(string $url, array $headers = [], ?string $postBody = null): array
+{
+    $ch = curl_init($url);
+    curl_setopt_array($ch, [
+        CURLOPT_RETURNTRANSFER => true,
+        CURLOPT_FOLLOWLOCATION => true,
+        CURLOPT_TIMEOUT => 25,
+        CURLOPT_HTTPHEADER => $headers,
+    ]);
+    if ($postBody !== null) {
+        curl_setopt($ch, CURLOPT_POST, true);
+        curl_setopt($ch, CURLOPT_POSTFIELDS, $postBody);
+    }
+    $body = curl_exec($ch);
+    $code = (int)curl_getinfo($ch, CURLINFO_HTTP_CODE);
+    curl_close($ch);
+    return ['code' => $code, 'body' => is_string($body) ? $body : ''];
+}
+
+function getMetaWhatsAppToken(): string
+{
+    $tok = trim((string)getenv('WHATSAPP_ACCESS_TOKEN'));
+    if ($tok === '') {
+        $tok = trim((string)getenv('WHATSAPP_CLOUD_TOKEN'));
+    }
+    return $tok;
+}
+
+function sendMetaWhatsAppReply(string $phone, ?string $reply, string $phoneNumberId = ''): void
+{
+    if ($reply === null || trim($reply) === '' || $phone === '') {
+        return;
+    }
+    $token = getMetaWhatsAppToken();
+    $pid = $phoneNumberId !== '' ? $phoneNumberId : trim((string)getenv('WHATSAPP_PHONE_NUMBER_ID'));
+    $ver = trim((string)getenv('WHATSAPP_GRAPH_VERSION')) ?: 'v22.0';
+    if ($token === '' || $pid === '') {
+        return;
+    }
+    httpRequestSimple(
+        "https://graph.facebook.com/$ver/$pid/messages",
+        ["Authorization: Bearer $token", 'Content-Type: application/json'],
+        json_encode([
+            'messaging_product' => 'whatsapp',
+            'to' => $phone,
+            'type' => 'text',
+            'text' => ['body' => $reply],
+        ], JSON_UNESCAPED_UNICODE)
+    );
+}
+
+function downloadMetaAudioToFile(string $mediaId, string $destPath): bool
+{
+    $token = getMetaWhatsAppToken();
+    $ver = trim((string)getenv('WHATSAPP_GRAPH_VERSION')) ?: 'v22.0';
+    if ($token === '' || $mediaId === '') {
+        return false;
+    }
+    $metaRes = httpRequestSimple(
+        "https://graph.facebook.com/$ver/$mediaId",
+        ["Authorization: Bearer $token"]
+    );
+    $metaJson = json_decode($metaRes['body'], true);
+    $mediaUrl = (string)($metaJson['url'] ?? '');
+    if ($mediaUrl === '') {
+        return false;
+    }
+    $binRes = httpRequestSimple($mediaUrl, ["Authorization: Bearer $token", 'User-Agent: curl/8.0']);
+    if ($binRes['code'] >= 200 && $binRes['code'] < 300 && $binRes['body'] !== '') {
+        file_put_contents($destPath, $binRes['body']);
+        return true;
+    }
+    return false;
+}
+
 try {
     $pdo = getDb();
     $action = (string)($_GET['action'] ?? $_POST['action'] ?? 'summary');
@@ -129,21 +204,72 @@ try {
     }
 
     if ($action === 'smart_entry' || $action === 'whatsapp_webhook') {
+        // 0. Handle Meta WhatsApp Cloud API Webhook Verification (GET hub.challenge)
+        if (($_SERVER['REQUEST_METHOD'] ?? '') === 'GET' && isset($_GET['hub_mode'])) {
+            $verifyToken = trim((string)getenv('WHATSAPP_VERIFY_TOKEN')) ?: 'voice_expense_verify';
+            if (($_GET['hub_mode'] ?? '') === 'subscribe' && ($_GET['hub_verify_token'] ?? '') === $verifyToken) {
+                header('Content-Type: text/plain; charset=utf-8');
+                echo (string)($_GET['hub_challenge'] ?? '');
+                exit;
+            }
+            http_response_code(403);
+            echo json_encode(['ok' => false, 'error' => 'Verify token tidak cocok.']);
+            exit;
+        }
+
         $rawBody = file_get_contents('php://input');
         $jsonBody = $rawBody ? json_decode($rawBody, true) : [];
         if (!is_array($jsonBody)) {
             $jsonBody = [];
         }
 
-        $source = (string)($jsonBody['source'] ?? $_POST['source'] ?? ($action === 'whatsapp_webhook' ? 'whatsapp' : 'web'));
-        $phone = (string)($jsonBody['phone'] ?? $jsonBody['sender'] ?? $_POST['phone'] ?? DEFAULT_WA_NUMBER);
-        $inputText = trim((string)($jsonBody['text'] ?? $jsonBody['message'] ?? $_POST['text'] ?? ''));
-        $audioPath = (string)($jsonBody['audio_path'] ?? $_POST['audio_path'] ?? '');
-        $audioBase64 = (string)($jsonBody['audio_base64'] ?? $_POST['audio_base64'] ?? '');
+        $isMetaCloud = false;
+        $metaPhoneNumberId = '';
+        $metaMediaId = '';
+
+        // 0b. Parse Meta WhatsApp Cloud API POST payload if present
+        if (($jsonBody['object'] ?? '') === 'whatsapp_business_account' && !empty($jsonBody['entry'][0]['changes'][0]['value'])) {
+            $isMetaCloud = true;
+            $val = $jsonBody['entry'][0]['changes'][0]['value'];
+            $metaPhoneNumberId = (string)($val['metadata']['phone_number_id'] ?? '');
+            if (empty($val['messages'][0])) {
+                // Delivery/read status webhook: acknowledge 200 OK immediately
+                echo json_encode(['ok' => true, 'ignored' => 'status_update']);
+                exit;
+            }
+            $waMsg = $val['messages'][0];
+            $source = 'whatsapp-cloud';
+            $phone = (string)($waMsg['from'] ?? DEFAULT_WA_NUMBER);
+            $msgType = (string)($waMsg['type'] ?? '');
+            $inputText = $msgType === 'text' ? trim((string)($waMsg['text']['body'] ?? '')) : '';
+            $metaMediaId = $msgType === 'audio' ? (string)($waMsg['audio']['id'] ?? '') : '';
+            $audioPath = '';
+            $audioBase64 = '';
+        } else {
+            $source = (string)($jsonBody['source'] ?? $_POST['source'] ?? ($action === 'whatsapp_webhook' ? 'whatsapp' : 'web'));
+            $phone = (string)($jsonBody['phone'] ?? $jsonBody['sender'] ?? $_POST['phone'] ?? DEFAULT_WA_NUMBER);
+            $inputText = trim((string)($jsonBody['text'] ?? $jsonBody['message'] ?? $_POST['text'] ?? ''));
+            $audioPath = (string)($jsonBody['audio_path'] ?? $_POST['audio_path'] ?? '');
+            $audioBase64 = (string)($jsonBody['audio_base64'] ?? $_POST['audio_base64'] ?? '');
+        }
         $transcriptionModel = null;
 
-        // 1. Handle uploaded audio file or base64 audio (from browser mic, Flutter app, or WA bot -> Vercel)
-        if (!empty($_FILES['audio']['tmp_name']) && is_uploaded_file($_FILES['audio']['tmp_name'])) {
+        // 1. Handle Meta Cloud audio media_id, uploaded audio file, or base64 audio
+        if ($metaMediaId !== '') {
+            $dest = STORAGE_DIR . DIRECTORY_SEPARATOR . 'voice_meta_' . time() . '_' . mt_rand(100, 999) . '.ogg';
+            if (!downloadMetaAudioToFile($metaMediaId, $dest)) {
+                echo json_encode(['ok' => false, 'error' => 'Gagal mengunduh audio dari Meta Graph API.', 'whatsapp_reply' => null], JSON_UNESCAPED_UNICODE);
+                exit;
+            }
+            $tr = transcribeAudioFile($dest, 'audio/ogg');
+            @unlink($dest);
+            if (!$tr['ok']) {
+                echo json_encode(['ok' => false, 'error' => $tr['error'], 'whatsapp_reply' => null], JSON_UNESCAPED_UNICODE);
+                exit;
+            }
+            $inputText = (string)$tr['text'];
+            $transcriptionModel = $tr['model'] ?? 'whisper-large-v3-turbo';
+        } elseif (!empty($_FILES['audio']['tmp_name']) && is_uploaded_file($_FILES['audio']['tmp_name'])) {
             $ext = pathinfo((string)($_FILES['audio']['name'] ?? 'voice.ogg'), PATHINFO_EXTENSION) ?: 'ogg';
             $dest = STORAGE_DIR . DIRECTORY_SEPARATOR . 'voice_' . time() . '_' . mt_rand(100, 999) . '.' . $ext;
             move_uploaded_file($_FILES['audio']['tmp_name'], $dest);
@@ -209,6 +335,9 @@ try {
         $cmdLower = strtolower($inputText);
         if (in_array($cmdLower, ['laporan', 'saldo', 'rekap', '/laporan', '/saldo'], true)) {
             $summary = getFinancialSummary($pdo, 10);
+            if ($isMetaCloud) {
+                sendMetaWhatsAppReply($phone, $summary['whatsapp_report'], $metaPhoneNumberId);
+            }
             echo json_encode([
                 'ok' => true,
                 'command' => 'report',
@@ -226,6 +355,9 @@ try {
                 $msg = "🗑️ Transaksi terakhir berhasil dihapus: *{$last['description']}* (" . formatRupiah((float)$last['amount']) . ")";
             } else {
                 $msg = "ℹ️ Belum ada transaksi yang bisa dihapus.";
+            }
+            if ($isMetaCloud) {
+                sendMetaWhatsAppReply($phone, $msg, $metaPhoneNumberId);
             }
             echo json_encode([
                 'ok' => true,
@@ -272,6 +404,10 @@ try {
         // 4. Save to database
         $savedResult = saveParsedTransactions($pdo, $parsed['items'], $inputText, $source, $phone);
         $summary = getFinancialSummary($pdo, 30);
+
+        if ($isMetaCloud) {
+            sendMetaWhatsAppReply($phone, $savedResult['whatsapp_reply'] ?? null, $metaPhoneNumberId);
+        }
 
         echo json_encode([
             'ok' => true,
