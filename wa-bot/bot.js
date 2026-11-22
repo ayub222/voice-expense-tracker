@@ -9,12 +9,20 @@ import makeWASocket, {
 import pino from "pino";
 import qrcode from "qrcode-terminal";
 import fs from "fs";
+import http from "http";
 import path from "path";
 import { fileURLToPath } from "url";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const ROOT_DIR = path.resolve(__dirname, "..");
-const STORAGE_DIR = path.join(ROOT_DIR, "storage");
+const PARENT_STORAGE = path.join(ROOT_DIR, "storage");
+const STORAGE_DIR =
+  process.env.STORAGE_DIR ||
+  (fs.existsSync("/data")
+    ? "/data"
+    : fs.existsSync(PARENT_STORAGE)
+      ? PARENT_STORAGE
+      : path.join(__dirname, "storage"));
 const AUTH_DIR = path.join(STORAGE_DIR, "wa_auth");
 const STATUS_FILE = path.join(STORAGE_DIR, "wa_status.json");
 const PID_FILE = path.join(STORAGE_DIR, "wa_bot.pid");
@@ -141,8 +149,20 @@ function unwrapMessage(message) {
 }
 
 const processedMsgIds = new Set();
-// Store sent messages by key.id so WhatsApp retry requests ("Menunggu pesan ini") decrypt immediately
-const sentMessagesStore = new Map();
+const SENT_STORE_FILE = path.join(STORAGE_DIR, "sent_messages.json");
+
+function loadSentStore() {
+  try {
+    if (fs.existsSync(SENT_STORE_FILE)) {
+      const arr = JSON.parse(fs.readFileSync(SENT_STORE_FILE, "utf8"));
+      if (Array.isArray(arr)) return new Map(arr);
+    }
+  } catch {}
+  return new Map();
+}
+
+// Store sent messages on disk so WhatsApp retry requests ("Menunggu pesan ini") decrypt even after bot restarts
+const sentMessagesStore = loadSentStore();
 let startupReportSent = false;
 
 async function safeSendText(sock, jid, text) {
@@ -417,6 +437,42 @@ async function startBot() {
         console.error("WA message handler error:", err.message || err);
       }
     }
+  });
+}
+
+// Health check server for 24/7 cloud platforms (Railway, Koyeb, Render, Fly.io)
+const HEALTH_PORT = Number(process.env.PORT || 0);
+if (HEALTH_PORT > 0) {
+  http
+    .createServer((req, res) => {
+      let status = { connected: false, state: "starting" };
+      try {
+        if (fs.existsSync(STATUS_FILE)) {
+          status = JSON.parse(fs.readFileSync(STATUS_FILE, "utf8"));
+        }
+      } catch {
+        // Ignore read error
+      }
+      res.writeHead(200, { "Content-Type": "application/json" });
+      res.end(
+        JSON.stringify({
+          ok: true,
+          service: "voice-expense-wa-bot",
+          uptime_sec: Math.floor(process.uptime()),
+          connected: Boolean(status.connected),
+          state: status.state || "unknown",
+        })
+      );
+    })
+    .listen(HEALTH_PORT, "0.0.0.0", () => {
+      console.log(`🌐 Health server listening on port ${HEALTH_PORT}`);
+    });
+}
+
+for (const sig of ["SIGINT", "SIGTERM"]) {
+  process.on(sig, () => {
+    console.log(`Received ${sig}, shutting down cleanly...`);
+    process.exit(0);
   });
 }
 
