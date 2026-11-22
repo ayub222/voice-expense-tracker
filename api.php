@@ -375,7 +375,7 @@ try {
             $inputText
         );
         $hasMoneyAmount = (bool)preg_match(
-            '/(\d+\s*(?:ribu|rb|k|juta|jt|rupiah|rp)|\b(?:rp\.?\s*\d+|\d{4,})\b|\b(?:seribu|dua\s*ribu|tiga\s*ribu|empat\s*ribu|lima\s*ribu|sepuluh\s*ribu| limabelas\s*ribu|dua\s*puluh|tiga\s*puluh|lima\s*puluh|seratus|sejuta|juta|ribu|gocap|cepek|goban|seceng)\b)/i',
+            '/(\d+(?:[.,]\d+)?\s*(?:ribu|rb|k|juta|jt|rupiah|rp)|\b(?:rp\.?\s*\d[\d.,]*|\d{1,3}(?:[.,]\d{3})+|\d{4,})\b|\b(?:seribu|dua\s*ribu|tiga\s*ribu|empat\s*ribu|lima\s*ribu|sepuluh\s*ribu|limabelas\s*ribu|lima\s*belas\s*ribu|dua\s*puluh|tiga\s*puluh|lima\s*puluh|seratus|sejuta|juta|ribu|gocap|cepek|goban|seceng)\b)/i',
             $inputText
         );
 
