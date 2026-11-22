@@ -34,6 +34,26 @@ const KNOWN_SELF_LID = "257681076023469@lid";
 const API_BASE = process.env.API_BASE || "https://voice-expense-tracker-olive.vercel.app/api.php";
 const API_ENDPOINT = process.env.API_ENDPOINT || `${API_BASE}?action=whatsapp_webhook`;
 const USERS_ENDPOINT = `${API_BASE}?action=users`;
+const ALLOWED_GROUP_KEYWORDS = (process.env.ALLOWED_GROUP_NAMES || "catatan keuangan,expense tracker,keuangan ai")
+  .split(",")
+  .map((s) => s.trim().toLowerCase())
+  .filter(Boolean);
+const groupAllowedCache = new Map();
+
+async function isAllowedFinanceGroup(sock, groupJid) {
+  if (!groupJid.endsWith("@g.us")) return false;
+  if (groupAllowedCache.has(groupJid)) return groupAllowedCache.get(groupJid);
+  try {
+    const meta = await sock.groupMetadata(groupJid);
+    const subject = String(meta?.subject || "").toLowerCase();
+    const ok = ALLOWED_GROUP_KEYWORDS.some((kw) => subject.includes(kw));
+    groupAllowedCache.set(groupJid, ok);
+    setTimeout(() => groupAllowedCache.delete(groupJid), 300000);
+    return ok;
+  } catch {
+    return false;
+  }
+}
 
 let cachedAllowedPhones = new Set([TARGET_PHONE]);
 
@@ -288,7 +308,12 @@ async function startBot() {
       if (msgId && processedMsgIds.has(msgId)) continue;
 
       const remoteJid = msg.key.remoteJid || "";
-      if (remoteJid.endsWith("@g.us") || remoteJid === "status@broadcast") continue;
+      if (remoteJid === "status@broadcast") continue;
+
+      const isGroup = remoteJid.endsWith("@g.us");
+      if (isGroup && !(await isAllowedFinanceGroup(sock, remoteJid))) {
+        continue;
+      }
 
       const msgTs = Number(msg.messageTimestamp || 0);
       const nowSec = Math.floor(Date.now() / 1000);
@@ -335,15 +360,16 @@ async function startBot() {
       let matchedPhone = "";
 
       if (msg.key.fromMe) {
-        // When sent from Ayub's own phone, only process inside his own self-chat (and only if his number is active)
-        if (isStrictlySelfChat && allowedPhones.has(TARGET_PHONE)) {
+        // When sent from Ayub's own phone, allow inside self-chat OR inside an allowed finance group
+        if ((isStrictlySelfChat || isGroup) && allowedPhones.has(TARGET_PHONE)) {
           matchedPhone = TARGET_PHONE;
         }
       } else {
-        // Incoming message from another number: check if their phone number is registered & active in allowed_numbers.json
+        // Incoming message from another number (direct or in an allowed finance group)
         const candidatePn =
           msg.key.senderPn ||
           msg.key.participantAlt ||
+          msg.key.participant ||
           (remoteJid.endsWith("@s.whatsapp.net") ? remoteJid : "");
         const senderNorm = normalizePhone(candidatePn.split("@")[0].split(":")[0]);
         if (senderNorm && allowedPhones.has(senderNorm)) {
@@ -364,7 +390,7 @@ async function startBot() {
         const lower = textMsg.toLowerCase();
         const isExactCmd = ["laporan", "saldo", "rekap", "/laporan", "/saldo", "hapus terakhir", "batal", "undo", "/undo"].includes(lower);
         const hasFinanceKw = /\b(beli|bayar|jajan|makan|minum|kopi|teh|susu|rokok|bensin|pertalite|pertamax|parkir|ojek|gojek|grab|tol|belanja|kos|kontrakan|listrik|token|wifi|kuota|pulsa|tagihan|gaji|pemasukan|pengeluaran|transfer|bonus|honor|dapat|catat|transaksi|sedekah|obat|servis|laundry|cukur)\b/i.test(textMsg);
-        const hasAmount = /(\d+\s*(?:ribu|rb|k|juta|jt|rupiah|rp)|\b(?:rp\.?\s*\d+|\d{4,})\b|\b(?:seribu|dua\s*ribu|tiga\s*ribu|empat\s*ribu|lima\s*ribu|sepuluh\s*ribu|dua\s*puluh|tiga\s*puluh|lima\s*puluh|seratus|sejuta|juta|ribu|gocap|cepek|goban|seceng)\b)/i.test(textMsg);
+        const hasAmount = /(\d+(?:[.,]\d+)?\s*(?:ribu|rb|k|juta|jt|rupiah|rp)|\b(?:rp\.?\s*\d[\d.,]*|\d{1,3}(?:[.,]\d{3})+|\d{4,})\b|\b(?:seribu|dua\s*ribu|tiga\s*ribu|empat\s*ribu|lima\s*ribu|sepuluh\s*ribu|limabelas\s*ribu|lima\s*belas\s*ribu|dua\s*puluh|tiga\s*puluh|lima\s*puluh|seratus|sejuta|juta|ribu|gocap|cepek|goban|seceng)\b)/i.test(textMsg);
         if (!isExactCmd && (!hasFinanceKw || !hasAmount)) {
           continue;
         }
