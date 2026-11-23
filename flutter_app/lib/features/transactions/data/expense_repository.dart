@@ -1,65 +1,46 @@
 import 'dart:convert';
-import 'dart:io';
+import 'package:http/http.dart' as http;
 import '../../../core/api_config.dart';
 import '../domain/expense_models.dart';
 
 class ExpenseRepository {
   Future<FinancialSummary> fetchSummary() async {
-    final client = HttpClient();
-    client.connectionTimeout = const Duration(seconds: 8);
-    try {
-      final uri = Uri.parse('${ApiConfig.apiUrl}?action=summary');
-      final req = await client.getUrl(uri);
-      final resp = await req.close();
-      final body = await resp.transform(utf8.decoder).join();
-      final decoded = jsonDecode(body) as Map<String, dynamic>;
-      if (decoded['ok'] == true && decoded['data'] is Map) {
-        return FinancialSummary.fromJson(
-          Map<String, dynamic>.from(decoded['data'] as Map),
-        );
-      }
-      throw Exception(decoded['error'] ?? 'Gagal memuat data.');
-    } finally {
-      client.close();
+    final uri = Uri.parse('${ApiConfig.apiUrl}?action=summary');
+    final resp = await http.get(uri).timeout(const Duration(seconds: 12));
+    final decoded = jsonDecode(resp.body) as Map<String, dynamic>;
+    if (decoded['ok'] == true && decoded['data'] is Map) {
+      return FinancialSummary.fromJson(
+        Map<String, dynamic>.from(decoded['data'] as Map),
+      );
     }
+    throw Exception(decoded['error'] ?? 'Gagal memuat data.');
   }
 
   Future<Map<String, dynamic>> submitSmartEntry(String text) async {
-    final client = HttpClient();
-    client.connectionTimeout = const Duration(seconds: 15);
-    try {
-      final uri = Uri.parse('${ApiConfig.apiUrl}?action=smart_entry');
-      final req = await client.postUrl(uri);
-      req.headers.contentType = ContentType.json;
-      req.write(jsonEncode({
-        'text': text,
-        'source': 'flutter',
-        'phone': '0895374884648',
-      }));
-      final resp = await req.close();
-      final body = await resp.transform(utf8.decoder).join();
-      return jsonDecode(body) as Map<String, dynamic>;
-    } finally {
-      client.close();
-    }
+    final uri = Uri.parse('${ApiConfig.apiUrl}?action=smart_entry');
+    final resp = await http
+        .post(
+          uri,
+          headers: const {'Content-Type': 'application/json'},
+          body: jsonEncode({
+            'text': text,
+            'source': 'flutter',
+            'phone': '0895374884648',
+          }),
+        )
+        .timeout(const Duration(seconds: 20));
+    return jsonDecode(resp.body) as Map<String, dynamic>;
   }
 
   Future<FinancialSummary> deleteTransaction(int id) async {
-    final client = HttpClient();
-    try {
-      final uri = Uri.parse('${ApiConfig.apiUrl}?action=delete&id=$id');
-      final req = await client.postUrl(uri);
-      final resp = await req.close();
-      final body = await resp.transform(utf8.decoder).join();
-      final decoded = jsonDecode(body) as Map<String, dynamic>;
-      if (decoded['ok'] == true && decoded['summary'] is Map) {
-        return FinancialSummary.fromJson(
-          Map<String, dynamic>.from(decoded['summary'] as Map),
-        );
-      }
-      return fetchSummary();
-    } finally {
-      client.close();
+    final uri = Uri.parse('${ApiConfig.apiUrl}?action=delete&id=$id');
+    final resp = await http.post(uri).timeout(const Duration(seconds: 12));
+    final decoded = jsonDecode(resp.body) as Map<String, dynamic>;
+    if (decoded['ok'] == true && decoded['summary'] is Map) {
+      return FinancialSummary.fromJson(
+        Map<String, dynamic>.from(decoded['summary'] as Map),
+      );
     }
+    return fetchSummary();
   }
 }
