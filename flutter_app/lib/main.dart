@@ -14,7 +14,7 @@ class VoiceExpenseApp extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
-      title: 'Voice Expense Tracker AI',
+      title: 'Catatan Keuangan',
       debugShowCheckedModeBanner: false,
       theme: AppTheme.darkTheme(),
       home: const HomeShellPage(),
@@ -78,11 +78,11 @@ class _HomeShellPageState extends State<HomeShellPage> {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Text(
-              'Voice Expense Tracker AI',
+              'Catatan Keuangan',
               style: tt.titleMedium?.copyWith(fontWeight: FontWeight.w700),
             ),
             Text(
-              'Vercel + TiDB Cloud • WA Bot Railway',
+              'Sinkronisasi Cloud & WhatsApp',
               style: tt.labelSmall?.copyWith(color: cs.primary),
             ),
           ],

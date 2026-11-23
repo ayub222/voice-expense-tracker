@@ -5,7 +5,7 @@ void main() {
   testWidgets('VoiceExpenseApp renders Dashboard and WA Bot tabs', (WidgetTester tester) async {
     await tester.pumpWidget(const VoiceExpenseApp());
 
-    expect(find.text('Voice Expense Tracker AI'), findsOneWidget);
+    expect(find.text('Catatan Keuangan'), findsOneWidget);
     expect(find.text('Catat'), findsOneWidget);
     expect(find.text('Dashboard'), findsOneWidget);
     expect(find.text('WA Bot'), findsOneWidget);

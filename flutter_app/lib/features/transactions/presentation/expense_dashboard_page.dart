@@ -84,7 +84,7 @@ class _ExpenseDashboardPageState extends State<ExpenseDashboardPage> {
         }
         final count = (res['saved_transactions'] as List?)?.length ?? 1;
         setState(() {
-          _statusMessage = 'Tercatat $count transaksi via AI dan tersimpan ke TiDB Cloud.';
+          _statusMessage = 'Tercatat $count transaksi berhasil disimpan.';
           _isError = false;
         });
       } else {
@@ -140,10 +140,6 @@ class _ExpenseDashboardPageState extends State<ExpenseDashboardPage> {
               statusMessage: _statusMessage,
               isError: _isError,
               onSubmit: () => _submitSmartText(),
-              onPresetTap: (preset) {
-                _inputCtrl.text = preset;
-                _submitSmartText(preset);
-              },
             ),
             const SizedBox(height: AppSpacing.md),
             _SummaryGrid(summary: _summary),
@@ -234,7 +230,6 @@ class _SmartEntryCard extends StatelessWidget {
   final String? statusMessage;
   final bool isError;
   final VoidCallback onSubmit;
-  final ValueChanged<String> onPresetTap;
 
   const _SmartEntryCard({
     required this.controller,
@@ -242,7 +237,6 @@ class _SmartEntryCard extends StatelessWidget {
     required this.statusMessage,
     required this.isError,
     required this.onSubmit,
-    required this.onPresetTap,
   });
 
   @override
@@ -255,17 +249,17 @@ class _SmartEntryCard extends StatelessWidget {
       decoration: BoxDecoration(
         color: cs.surfaceContainerLow,
         borderRadius: AppRadius.lg,
-        border: Border.all(color: cs.primary.withValues(alpha: 0.4)),
+        border: Border.all(color: cs.outlineVariant),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Row(
             children: [
-              Icon(Icons.auto_awesome, color: cs.primary, size: 18),
+              Icon(Icons.edit_note, color: cs.primary, size: 20),
               const SizedBox(width: AppSpacing.sm),
               Text(
-                'Catat Cepat dengan AI',
+                'Catat Transaksi',
                 style: tt.titleSmall?.copyWith(
                   color: cs.primary,
                   fontWeight: FontWeight.w700,
@@ -281,7 +275,7 @@ class _SmartEntryCard extends StatelessWidget {
                   controller: controller,
                   onSubmitted: (_) => onSubmit(),
                   decoration: const InputDecoration(
-                    hintText: 'Misal: Beli bensin 30rb sama kopi 15rb',
+                    hintText: 'Tulis transaksi, misal: Beli kopi 15rb',
                   ),
                 ),
               ),
@@ -292,21 +286,6 @@ class _SmartEntryCard extends StatelessWidget {
                   onPressed: submitting ? null : onSubmit,
                   child: Text(submitting ? '...' : 'Catat'),
                 ),
-              ),
-            ],
-          ),
-          const SizedBox(height: AppSpacing.sm),
-          Wrap(
-            spacing: AppSpacing.sm,
-            runSpacing: AppSpacing.xs,
-            children: [
-              ActionChip(
-                label: const Text('Beli bensin 30rb & kopi 15rb'),
-                onPressed: () => onPresetTap('Beli bensin 30 ribu sama kopi 15 ribu'),
-              ),
-              ActionChip(
-                label: const Text('Makan siang 25rb'),
-                onPressed: () => onPresetTap('Makan siang 25 ribu'),
               ),
             ],
           ),
