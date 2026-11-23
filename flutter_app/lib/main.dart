@@ -16,7 +16,7 @@ class VoiceExpenseApp extends StatelessWidget {
     return MaterialApp(
       title: 'Catatan Keuangan',
       debugShowCheckedModeBanner: false,
-      theme: AppTheme.darkTheme(),
+      theme: AppTheme.lightTheme(),
       home: const HomeShellPage(),
     );
   }
@@ -30,8 +30,6 @@ class HomeShellPage extends StatefulWidget {
 }
 
 class _HomeShellPageState extends State<HomeShellPage> {
-  int _index = 0;
-
   void _showServerDialog() {
     final ctrl = TextEditingController(text: ApiConfig.apiUrl);
     showDialog<void>(
@@ -72,51 +70,76 @@ class _HomeShellPageState extends State<HomeShellPage> {
     final cs = Theme.of(context).colorScheme;
     final tt = Theme.of(context).textTheme;
 
-    return Scaffold(
-      appBar: AppBar(
-        title: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(
-              'Catatan Keuangan',
-              style: tt.titleMedium?.copyWith(fontWeight: FontWeight.w700),
-            ),
-            Text(
-              'Sinkronisasi Cloud & WhatsApp',
-              style: tt.labelSmall?.copyWith(color: cs.primary),
+    return DefaultTabController(
+      length: 2,
+      child: Scaffold(
+        appBar: AppBar(
+          title: Row(
+            children: [
+              Container(
+                width: 36,
+                height: 36,
+                decoration: BoxDecoration(
+                  color: cs.primary.withValues(alpha: 0.12),
+                  borderRadius: AppRadius.md,
+                ),
+                child: Icon(
+                  Icons.account_balance_wallet_outlined,
+                  color: cs.primary,
+                  size: 20,
+                ),
+              ),
+              const SizedBox(width: 12),
+              Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    'Catatan Keuangan',
+                    style: tt.titleMedium?.copyWith(fontWeight: FontWeight.w700),
+                  ),
+                  Text(
+                    'Sinkronisasi Cloud & WhatsApp',
+                    style: tt.labelSmall?.copyWith(color: cs.onSurfaceVariant),
+                  ),
+                ],
+              ),
+            ],
+          ),
+          actions: [
+            IconButton(
+              icon: const Icon(Icons.tune),
+              tooltip: 'Atur URL API',
+              onPressed: _showServerDialog,
             ),
           ],
+          bottom: PreferredSize(
+            preferredSize: const Size.fromHeight(49),
+            child: Container(
+              decoration: BoxDecoration(
+                border: Border(
+                  bottom: BorderSide(color: cs.outlineVariant),
+                ),
+              ),
+              child: Center(
+                child: ConstrainedBox(
+                  constraints: const BoxConstraints(maxWidth: 640),
+                  child: const TabBar(
+                    tabs: [
+                      Tab(text: 'Dashboard'),
+                      Tab(text: 'WA Bot'),
+                    ],
+                  ),
+                ),
+              ),
+            ),
+          ),
         ),
-        actions: [
-          IconButton(
-            icon: const Icon(Icons.settings_ethernet),
-            tooltip: 'Atur URL API',
-            onPressed: _showServerDialog,
-          ),
-        ],
-      ),
-      body: IndexedStack(
-        index: _index,
-        children: const [
-          ExpenseDashboardPage(),
-          WaBotPage(),
-        ],
-      ),
-      bottomNavigationBar: NavigationBar(
-        selectedIndex: _index,
-        onDestinationSelected: (i) => setState(() => _index = i),
-        destinations: const [
-          NavigationDestination(
-            icon: Icon(Icons.dashboard_outlined),
-            selectedIcon: Icon(Icons.dashboard),
-            label: 'Dashboard',
-          ),
-          NavigationDestination(
-            icon: Icon(Icons.chat_outlined),
-            selectedIcon: Icon(Icons.chat),
-            label: 'WA Bot',
-          ),
-        ],
+        body: const TabBarView(
+          children: [
+            ExpenseDashboardPage(),
+            WaBotPage(),
+          ],
+        ),
       ),
     );
   }

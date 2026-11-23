@@ -12,25 +12,15 @@ class WaBotPage extends StatefulWidget {
 
 class _WaBotPageState extends State<WaBotPage> {
   final WaUserRepository _repo = WaUserRepository();
-  final TextEditingController _nameCtrl = TextEditingController();
-  final TextEditingController _phoneCtrl = TextEditingController();
 
   List<WaUser> _users = const [];
   bool _loading = false;
-  bool _submitting = false;
   String? _error;
 
   @override
   void initState() {
     super.initState();
     _loadUsers();
-  }
-
-  @override
-  void dispose() {
-    _nameCtrl.dispose();
-    _phoneCtrl.dispose();
-    super.dispose();
   }
 
   Future<void> _loadUsers() async {
@@ -54,27 +44,94 @@ class _WaBotPageState extends State<WaBotPage> {
     }
   }
 
-  Future<void> _addUser() async {
-    final name = _nameCtrl.text.trim();
-    final phone = _phoneCtrl.text.trim();
-    if (name.isEmpty || phone.isEmpty) {
-      _showSnack('Nama dan nomor WhatsApp wajib diisi.');
-      return;
-    }
+  Future<void> _openAddUserSheet() async {
+    final nameCtrl = TextEditingController();
+    final phoneCtrl = TextEditingController();
+    bool saving = false;
 
-    setState(() => _submitting = true);
-    try {
-      final updated = await _repo.addUser(name: name, phone: phone);
-      if (!mounted) return;
-      _nameCtrl.clear();
-      _phoneCtrl.clear();
-      setState(() => _users = updated);
-      _showSnack('Nomor berhasil disimpan. Sync otomatis ke WA Bot Railway ~15 detik.');
-    } catch (e) {
-      if (mounted) _showSnack('Gagal menambahkan: $e');
-    } finally {
-      if (mounted) setState(() => _submitting = false);
-    }
+    await showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx, setModalState) => Padding(
+          padding: EdgeInsets.only(
+            left: AppSpacing.lg,
+            right: AppSpacing.lg,
+            top: AppSpacing.lg,
+            bottom: MediaQuery.of(ctx).viewInsets.bottom + AppSpacing.lg,
+          ),
+          child: ConstrainedBox(
+            constraints: const BoxConstraints(maxWidth: 640),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'Tambah Nomor WhatsApp',
+                  style: Theme.of(ctx)
+                      .textTheme
+                      .titleMedium
+                      ?.copyWith(fontWeight: FontWeight.w700),
+                ),
+                const SizedBox(height: AppSpacing.md),
+                TextField(
+                  controller: nameCtrl,
+                  textInputAction: TextInputAction.next,
+                  decoration: const InputDecoration(
+                    labelText: 'Nama Pengguna',
+                    hintText: 'Misal: Ayub / Admin',
+                    prefixIcon: Icon(Icons.person_outline),
+                  ),
+                ),
+                const SizedBox(height: AppSpacing.sm),
+                TextField(
+                  controller: phoneCtrl,
+                  keyboardType: TextInputType.phone,
+                  decoration: const InputDecoration(
+                    labelText: 'Nomor WhatsApp',
+                    hintText: '08xxxxxxxxxx',
+                    prefixIcon: Icon(Icons.phone_android),
+                  ),
+                ),
+                const SizedBox(height: AppSpacing.md),
+                SizedBox(
+                  width: double.infinity,
+                  child: FilledButton(
+                    onPressed: saving
+                        ? null
+                        : () async {
+                            final name = nameCtrl.text.trim();
+                            final phone = phoneCtrl.text.trim();
+                            if (name.isEmpty || phone.isEmpty) {
+                              _showSnack('Nama dan nomor WhatsApp wajib diisi.');
+                              return;
+                            }
+                            setModalState(() => saving = true);
+                            try {
+                              final updated = await _repo.addUser(
+                                name: name,
+                                phone: phone,
+                              );
+                              if (!mounted) return;
+                              setState(() => _users = updated);
+                              if (ctx.mounted) Navigator.pop(ctx);
+                              _showSnack(
+                                'Nomor disimpan. Sinkron otomatis ke WA Bot dalam 15 detik.',
+                              );
+                            } catch (e) {
+                              if (mounted) _showSnack('Gagal menambahkan: $e');
+                              setModalState(() => saving = false);
+                            }
+                          },
+                    child: Text(saving ? 'Menyimpan...' : 'Simpan Nomor'),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
   }
 
   Future<void> _toggleUser(WaUser user) async {
@@ -107,155 +164,131 @@ class _WaBotPageState extends State<WaBotPage> {
     final cs = Theme.of(context).colorScheme;
     final tt = Theme.of(context).textTheme;
 
-    return SafeArea(
-      child: RefreshIndicator(
-        onRefresh: _loadUsers,
-        child: ListView(
-          padding: const EdgeInsets.all(AppSpacing.md),
-          children: [
-            const _WaBotStatusCard(),
-            const SizedBox(height: AppSpacing.md),
-            _AddWaUserCard(
-              nameController: _nameCtrl,
-              phoneController: _phoneCtrl,
-              submitting: _submitting,
-              onSubmit: _addUser,
-            ),
-            const SizedBox(height: AppSpacing.lg),
-            Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                Text(
-                  'Daftar Nomor WA Terdaftar (${_users.length})',
-                  style: tt.titleMedium?.copyWith(fontWeight: FontWeight.w700),
+    return Scaffold(
+      floatingActionButton: FloatingActionButton.extended(
+        onPressed: _openAddUserSheet,
+        icon: const Icon(Icons.add_rounded),
+        label: const Text('Tambah Nomor'),
+      ),
+      body: SafeArea(
+        child: RefreshIndicator(
+          onRefresh: _loadUsers,
+          child: Center(
+            child: ConstrainedBox(
+              constraints: const BoxConstraints(maxWidth: 640),
+              child: ListView(
+                padding: const EdgeInsets.fromLTRB(
+                  AppSpacing.md,
+                  AppSpacing.md,
+                  AppSpacing.md,
+                  96,
                 ),
-                IconButton(
-                  onPressed: _loading ? null : _loadUsers,
-                  tooltip: 'Refresh daftar nomor',
-                  icon: const Icon(Icons.refresh),
-                ),
-              ],
-            ),
-            const SizedBox(height: AppSpacing.sm),
-            if (_loading && _users.isEmpty)
-              const Padding(
-                padding: EdgeInsets.all(AppSpacing.xl),
-                child: Center(child: CircularProgressIndicator()),
-              )
-            else if (_error != null && _users.isEmpty)
-              Container(
-                padding: const EdgeInsets.all(AppSpacing.md),
-                decoration: BoxDecoration(
-                  color: cs.surfaceContainerLow,
-                  borderRadius: AppRadius.lg,
-                  border: Border.all(color: cs.error.withValues(alpha: 0.5)),
-                ),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(_error!, style: tt.bodyMedium?.copyWith(color: cs.error)),
-                    const SizedBox(height: AppSpacing.sm),
-                    FilledButton.tonalIcon(
-                      onPressed: _loadUsers,
-                      icon: const Icon(Icons.refresh),
-                      label: const Text('Coba Lagi'),
+                children: [
+                  const _WaBotBanner(),
+                  const SizedBox(height: AppSpacing.lg),
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      Text(
+                        'Nomor Terdaftar (${_users.length})',
+                        style: tt.titleMedium
+                            ?.copyWith(fontWeight: FontWeight.w700),
+                      ),
+                      IconButton(
+                        onPressed: _loading ? null : _loadUsers,
+                        tooltip: 'Muat ulang',
+                        icon: const Icon(Icons.refresh),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: AppSpacing.sm),
+                  if (_loading && _users.isEmpty)
+                    const Padding(
+                      padding: EdgeInsets.all(AppSpacing.xl),
+                      child: Center(child: CircularProgressIndicator()),
+                    )
+                  else if (_error != null && _users.isEmpty)
+                    Container(
+                      padding: const EdgeInsets.all(AppSpacing.md),
+                      decoration: BoxDecoration(
+                        color: cs.surfaceContainerLow,
+                        borderRadius: AppRadius.lg,
+                        border:
+                            Border.all(color: cs.error.withValues(alpha: 0.4)),
+                      ),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            _error!,
+                            style: tt.bodyMedium?.copyWith(color: cs.error),
+                          ),
+                          const SizedBox(height: AppSpacing.sm),
+                          FilledButton.tonalIcon(
+                            onPressed: _loadUsers,
+                            icon: const Icon(Icons.refresh),
+                            label: const Text('Coba Lagi'),
+                          ),
+                        ],
+                      ),
+                    )
+                  else if (_users.isEmpty)
+                    Container(
+                      padding: const EdgeInsets.all(AppSpacing.lg),
+                      decoration: BoxDecoration(
+                        color: cs.surfaceContainerLow,
+                        borderRadius: AppRadius.lg,
+                        border: Border.all(color: cs.outlineVariant),
+                      ),
+                      child: Text(
+                        'Belum ada nomor terdaftar. Tekan tombol "Tambah Nomor" di pojok kanan bawah.',
+                        style:
+                            tt.bodyMedium?.copyWith(color: cs.onSurfaceVariant),
+                      ),
+                    )
+                  else
+                    Container(
+                      decoration: BoxDecoration(
+                        color: cs.surfaceContainerLow,
+                        borderRadius: AppRadius.lg,
+                        border: Border.all(color: cs.outlineVariant),
+                      ),
+                      child: ListView.separated(
+                        shrinkWrap: true,
+                        physics: const NeverScrollableScrollPhysics(),
+                        itemCount: _users.length,
+                        separatorBuilder: (_, __) => Divider(
+                          height: 1,
+                          color: cs.outlineVariant,
+                        ),
+                        itemBuilder: (context, index) {
+                          final user = _users[index];
+                          return _WaUserRow(
+                            user: user,
+                            onToggle: () => _toggleUser(user),
+                            onDelete:
+                                user.id == 1 ? null : () => _deleteUser(user),
+                          );
+                        },
+                      ),
                     ),
-                  ],
-                ),
-              )
-            else if (_users.isEmpty)
-              Container(
-                padding: const EdgeInsets.all(AppSpacing.lg),
-                decoration: BoxDecoration(
-                  color: cs.surfaceContainerLow,
-                  borderRadius: AppRadius.lg,
-                  border: Border.all(color: cs.outlineVariant),
-                ),
-                child: Text(
-                  'Belum ada nomor WhatsApp terdaftar. Tambahkan nomor di atas agar bisa kirim Voice Note ke WA Bot.',
-                  style: tt.bodyMedium?.copyWith(color: cs.onSurfaceVariant),
-                ),
-              )
-            else
-              ..._users.map(
-                (user) => _WaUserTile(
-                  user: user,
-                  onToggle: () => _toggleUser(user),
-                  onDelete: user.id == 1 ? null : () => _deleteUser(user),
-                ),
+                ],
               ),
-          ],
+            ),
+          ),
         ),
       ),
     );
   }
 }
 
-class _WaBotStatusCard extends StatelessWidget {
-  const _WaBotStatusCard();
+class _WaBotBanner extends StatelessWidget {
+  const _WaBotBanner();
 
   @override
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
-    final tt = Theme.of(context).textTheme;
-
-    return Container(
-      padding: const EdgeInsets.all(AppSpacing.md),
-      decoration: BoxDecoration(
-        color: cs.surfaceContainerLow,
-        borderRadius: AppRadius.lg,
-        border: Border.all(color: cs.primary.withValues(alpha: 0.45)),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            children: [
-              Icon(Icons.cloud_done_outlined, color: cs.primary, size: 22),
-              const SizedBox(width: AppSpacing.sm),
-              Expanded(
-                child: Text(
-                  'WA Bot 24/7 Aktif (Railway + Vercel + TiDB)',
-                  style: tt.titleSmall?.copyWith(
-                    color: cs.primary,
-                    fontWeight: FontWeight.w700,
-                  ),
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: AppSpacing.sm),
-          Text(
-            'Bot utama: 0895374884648 • Auto-sync user tiap 15 detik.',
-            style: tt.bodySmall?.copyWith(color: cs.onSurface),
-          ),
-          const SizedBox(height: AppSpacing.xs),
-          Text(
-            'Kirim Voice Note atau teks ke self-chat atau ke grup WA bernama "Catatan Keuangan" agar tidak mengganggu chat pribadi.',
-            style: tt.bodySmall?.copyWith(color: cs.onSurfaceVariant),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-class _AddWaUserCard extends StatelessWidget {
-  final TextEditingController nameController;
-  final TextEditingController phoneController;
-  final bool submitting;
-  final VoidCallback onSubmit;
-
-  const _AddWaUserCard({
-    required this.nameController,
-    required this.phoneController,
-    required this.submitting,
-    required this.onSubmit,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    final cs = Theme.of(context).colorScheme;
+    final sem = Theme.of(context).extension<AppSemanticColors>()!;
     final tt = Theme.of(context).textTheme;
 
     return Container(
@@ -265,49 +298,33 @@ class _AddWaUserCard extends StatelessWidget {
         borderRadius: AppRadius.lg,
         border: Border.all(color: cs.outlineVariant),
       ),
-      child: Column(
+      child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text(
-            'Tambah Nomor WhatsApp',
-            style: tt.titleSmall?.copyWith(fontWeight: FontWeight.w700),
-          ),
-          const SizedBox(height: AppSpacing.sm),
-          TextField(
-            controller: nameController,
-            textInputAction: TextInputAction.next,
-            decoration: const InputDecoration(
-              labelText: 'Nama Pengguna',
-              hintText: 'Misal: Ayub / Istri / Admin',
-              prefixIcon: Icon(Icons.person_outline),
+          Container(
+            width: 40,
+            height: 40,
+            decoration: BoxDecoration(
+              color: sem.income.withValues(alpha: 0.12),
+              borderRadius: AppRadius.md,
             ),
+            child: Icon(Icons.cloud_done_outlined, color: sem.income, size: 20),
           ),
-          const SizedBox(height: AppSpacing.sm),
-          TextField(
-            controller: phoneController,
-            keyboardType: TextInputType.phone,
-            textInputAction: TextInputAction.done,
-            onSubmitted: (_) => onSubmit(),
-            decoration: const InputDecoration(
-              labelText: 'Nomor WhatsApp',
-              hintText: '08xxxxxxxxxx',
-              prefixIcon: Icon(Icons.phone_android),
-            ),
-          ),
-          const SizedBox(height: AppSpacing.md),
-          SizedBox(
-            width: double.infinity,
-            height: 48,
-            child: FilledButton.icon(
-              onPressed: submitting ? null : onSubmit,
-              icon: submitting
-                  ? const SizedBox(
-                      width: 18,
-                      height: 18,
-                      child: CircularProgressIndicator(strokeWidth: 2),
-                    )
-                  : const Icon(Icons.person_add_alt_1),
-              label: Text(submitting ? 'Menyimpan...' : 'Daftarkan Nomor WA'),
+          const SizedBox(width: AppSpacing.md),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'WA Bot 24/7 Aktif • 0895374884648',
+                  style: tt.titleSmall?.copyWith(fontWeight: FontWeight.w700),
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  'Daftar nomor otomatis sinkron ke bot setiap 15 detik. Gunakan self-chat atau grup "Catatan Keuangan".',
+                  style: tt.bodySmall?.copyWith(color: cs.onSurfaceVariant),
+                ),
+              ],
             ),
           ),
         ],
@@ -316,12 +333,12 @@ class _AddWaUserCard extends StatelessWidget {
   }
 }
 
-class _WaUserTile extends StatelessWidget {
+class _WaUserRow extends StatelessWidget {
   final WaUser user;
   final VoidCallback onToggle;
   final VoidCallback? onDelete;
 
-  const _WaUserTile({
+  const _WaUserRow({
     required this.user,
     required this.onToggle,
     required this.onDelete,
@@ -330,59 +347,52 @@ class _WaUserTile extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
+    final sem = Theme.of(context).extension<AppSemanticColors>()!;
     final tt = Theme.of(context).textTheme;
+    final badgeColor = user.isActive ? sem.income : cs.onSurfaceVariant;
 
-    return Container(
-      margin: const EdgeInsets.only(bottom: AppSpacing.sm),
-      padding: const EdgeInsets.symmetric(
+    return ListTile(
+      contentPadding: const EdgeInsets.symmetric(
         horizontal: AppSpacing.md,
-        vertical: AppSpacing.sm,
+        vertical: 4,
       ),
-      decoration: BoxDecoration(
-        color: cs.surfaceContainerLow,
-        borderRadius: AppRadius.lg,
-        border: Border.all(color: cs.outlineVariant),
+      leading: CircleAvatar(
+        backgroundColor: badgeColor.withValues(alpha: 0.12),
+        child: Icon(Icons.person_outline, color: badgeColor, size: 20),
       ),
-      child: Row(
+      title: Text(
+        user.name,
+        style: tt.titleSmall?.copyWith(fontWeight: FontWeight.w600),
+      ),
+      subtitle: Row(
         children: [
-          CircleAvatar(
-            backgroundColor: user.isActive
-                ? cs.primary.withValues(alpha: 0.18)
-                : cs.surfaceContainerHighest,
-            child: Icon(
-              Icons.chat_bubble_outline,
-              color: user.isActive ? cs.primary : cs.onSurfaceVariant,
-              size: 20,
+          Text(user.whatsappDisplay, style: tt.bodySmall),
+          const SizedBox(width: 8),
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+            decoration: BoxDecoration(
+              color: badgeColor.withValues(alpha: 0.12),
+              borderRadius: AppRadius.full,
+            ),
+            child: Text(
+              user.isActive ? 'Aktif' : 'Nonaktif',
+              style: tt.labelSmall?.copyWith(
+                color: badgeColor,
+                fontWeight: FontWeight.w600,
+              ),
             ),
           ),
-          const SizedBox(width: AppSpacing.md),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  user.name,
-                  style: tt.titleSmall?.copyWith(fontWeight: FontWeight.w600),
-                ),
-                const SizedBox(height: 2),
-                Text(
-                  '${user.whatsappDisplay} • ${user.isActive ? "Aktif" : "Nonaktif"}',
-                  style: tt.bodySmall?.copyWith(
-                    color: user.isActive ? cs.primary : cs.onSurfaceVariant,
-                  ),
-                ),
-              ],
-            ),
-          ),
-          Switch(
-            value: user.isActive,
-            onChanged: (_) => onToggle(),
-          ),
+        ],
+      ),
+      trailing: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Switch(value: user.isActive, onChanged: (_) => onToggle()),
           if (onDelete != null)
             IconButton(
               onPressed: onDelete,
               tooltip: 'Hapus nomor',
-              icon: Icon(Icons.delete_outline, color: cs.error),
+              icon: Icon(Icons.delete_outline, color: cs.error, size: 20),
             ),
         ],
       ),

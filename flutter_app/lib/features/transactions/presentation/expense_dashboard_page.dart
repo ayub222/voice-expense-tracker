@@ -49,7 +49,7 @@ class _ExpenseDashboardPageState extends State<ExpenseDashboardPage> {
     } catch (e) {
       if (mounted) {
         setState(() {
-          _statusMessage = 'Gagal terhubung ke Vercel API: $e';
+          _statusMessage = 'Gagal terhubung ke server: $e';
           _isError = true;
         });
       }
@@ -60,8 +60,8 @@ class _ExpenseDashboardPageState extends State<ExpenseDashboardPage> {
     }
   }
 
-  Future<void> _submitSmartText([String? preset]) async {
-    final text = (preset ?? _inputCtrl.text).trim();
+  Future<void> _submitSmartText() async {
+    final text = _inputCtrl.text.trim();
     if (text.isEmpty) return;
 
     setState(() {
@@ -89,7 +89,8 @@ class _ExpenseDashboardPageState extends State<ExpenseDashboardPage> {
         });
       } else {
         setState(() {
-          _statusMessage = (res['error'] ?? 'Gagal mencatat transaksi.').toString();
+          _statusMessage =
+              (res['error'] ?? 'Gagal mencatat transaksi.').toString();
           _isError = true;
         });
       }
@@ -131,107 +132,259 @@ class _ExpenseDashboardPageState extends State<ExpenseDashboardPage> {
     return SafeArea(
       child: RefreshIndicator(
         onRefresh: _loadData,
-        child: ListView(
-          padding: const EdgeInsets.all(AppSpacing.md),
-          children: [
-            _SmartEntryCard(
-              controller: _inputCtrl,
-              submitting: _submitting,
-              statusMessage: _statusMessage,
-              isError: _isError,
-              onSubmit: () => _submitSmartText(),
-            ),
-            const SizedBox(height: AppSpacing.md),
-            _SummaryGrid(summary: _summary),
-            if (_summary.byCategory.isNotEmpty) ...[
-              const SizedBox(height: AppSpacing.lg),
-              Text(
-                'Rekap Per Kategori',
-                style: tt.titleMedium?.copyWith(fontWeight: FontWeight.w700),
-              ),
-              const SizedBox(height: AppSpacing.sm),
-              _CategoryBreakdownCard(categories: _summary.byCategory),
-            ],
-            const SizedBox(height: AppSpacing.lg),
-            Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+        child: Center(
+          child: ConstrainedBox(
+            constraints: const BoxConstraints(maxWidth: 640),
+            child: ListView(
+              padding: const EdgeInsets.all(AppSpacing.md),
               children: [
-                Text(
-                  'Riwayat Transaksi Terbaru',
-                  style: tt.titleMedium?.copyWith(fontWeight: FontWeight.w700),
+                _HeroBalanceCard(summary: _summary),
+                const SizedBox(height: AppSpacing.md),
+                _QuickEntryCard(
+                  controller: _inputCtrl,
+                  submitting: _submitting,
+                  statusMessage: _statusMessage,
+                  isError: _isError,
+                  onSubmit: _submitSmartText,
                 ),
-                IconButton(
-                  onPressed: _loading ? null : _loadData,
-                  tooltip: 'Refresh transaksi',
-                  icon: const Icon(Icons.refresh),
-                ),
-              ],
-            ),
-            const SizedBox(height: AppSpacing.sm),
-            if (_loading && _summary.recentTransactions.isEmpty)
-              const Padding(
-                padding: EdgeInsets.all(AppSpacing.xl),
-                child: Center(child: CircularProgressIndicator()),
-              )
-            else if (_isError && _summary.recentTransactions.isEmpty)
-              Container(
-                padding: const EdgeInsets.all(AppSpacing.md),
-                decoration: BoxDecoration(
-                  color: cs.surfaceContainerLow,
-                  borderRadius: AppRadius.lg,
-                  border: Border.all(color: cs.error.withValues(alpha: 0.5)),
-                ),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
+                if (_summary.byCategory.isNotEmpty) ...[
+                  const SizedBox(height: AppSpacing.lg),
+                  Text(
+                    'Rekap Kategori',
+                    style: tt.titleMedium?.copyWith(fontWeight: FontWeight.w700),
+                  ),
+                  const SizedBox(height: AppSpacing.sm),
+                  _CategoryBreakdownCard(categories: _summary.byCategory),
+                ],
+                const SizedBox(height: AppSpacing.lg),
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
                     Text(
-                      _statusMessage ?? 'Gagal memuat transaksi.',
-                      style: tt.bodyMedium?.copyWith(color: cs.error),
+                      'Riwayat Transaksi',
+                      style:
+                          tt.titleMedium?.copyWith(fontWeight: FontWeight.w700),
                     ),
-                    const SizedBox(height: AppSpacing.sm),
-                    FilledButton.tonalIcon(
-                      onPressed: _loadData,
+                    IconButton(
+                      onPressed: _loading ? null : _loadData,
+                      tooltip: 'Muat ulang',
                       icon: const Icon(Icons.refresh),
-                      label: const Text('Coba Lagi'),
                     ),
                   ],
                 ),
-              )
-            else if (_summary.recentTransactions.isEmpty)
-              Container(
-                padding: const EdgeInsets.all(AppSpacing.lg),
-                decoration: BoxDecoration(
-                  color: cs.surfaceContainerLow,
-                  borderRadius: AppRadius.lg,
-                  border: Border.all(color: cs.outlineVariant),
-                ),
-                child: Text(
-                  'Belum ada transaksi. Kirim Voice Note di WA atau ketik kalimat transaksi di atas.',
-                  style: tt.bodyMedium?.copyWith(color: cs.onSurfaceVariant),
-                ),
-              )
-            else
-              ..._summary.recentTransactions.map(
-                (item) => _TransactionTile(
-                  item: item,
-                  onDelete: () => _deleteItem(item.id),
-                ),
-              ),
-          ],
+                const SizedBox(height: AppSpacing.sm),
+                if (_loading && _summary.recentTransactions.isEmpty)
+                  const Padding(
+                    padding: EdgeInsets.all(AppSpacing.xl),
+                    child: Center(child: CircularProgressIndicator()),
+                  )
+                else if (_isError && _summary.recentTransactions.isEmpty)
+                  Container(
+                    padding: const EdgeInsets.all(AppSpacing.md),
+                    decoration: BoxDecoration(
+                      color: cs.surfaceContainerLow,
+                      borderRadius: AppRadius.lg,
+                      border: Border.all(color: cs.error.withValues(alpha: 0.4)),
+                    ),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          _statusMessage ?? 'Gagal memuat transaksi.',
+                          style: tt.bodyMedium?.copyWith(color: cs.error),
+                        ),
+                        const SizedBox(height: AppSpacing.sm),
+                        FilledButton.tonalIcon(
+                          onPressed: _loadData,
+                          icon: const Icon(Icons.refresh),
+                          label: const Text('Coba Lagi'),
+                        ),
+                      ],
+                    ),
+                  )
+                else if (_summary.recentTransactions.isEmpty)
+                  Container(
+                    padding: const EdgeInsets.all(AppSpacing.lg),
+                    decoration: BoxDecoration(
+                      color: cs.surfaceContainerLow,
+                      borderRadius: AppRadius.lg,
+                      border: Border.all(color: cs.outlineVariant),
+                    ),
+                    child: Text(
+                      'Belum ada transaksi. Catat transaksi di atas atau kirim Voice Note lewat WhatsApp.',
+                      style: tt.bodyMedium?.copyWith(color: cs.onSurfaceVariant),
+                    ),
+                  )
+                else
+                  Container(
+                    decoration: BoxDecoration(
+                      color: cs.surfaceContainerLow,
+                      borderRadius: AppRadius.lg,
+                      border: Border.all(color: cs.outlineVariant),
+                    ),
+                    child: ListView.separated(
+                      shrinkWrap: true,
+                      physics: const NeverScrollableScrollPhysics(),
+                      itemCount: _summary.recentTransactions.length,
+                      separatorBuilder: (_, __) => Divider(
+                        height: 1,
+                        color: cs.outlineVariant,
+                      ),
+                      itemBuilder: (context, index) {
+                        final item = _summary.recentTransactions[index];
+                        return _TransactionRow(
+                          item: item,
+                          onDelete: () => _deleteItem(item.id),
+                        );
+                      },
+                    ),
+                  ),
+              ],
+            ),
+          ),
         ),
       ),
     );
   }
 }
 
-class _SmartEntryCard extends StatelessWidget {
+class _HeroBalanceCard extends StatelessWidget {
+  final FinancialSummary summary;
+
+  const _HeroBalanceCard({required this.summary});
+
+  @override
+  Widget build(BuildContext context) {
+    final sem = Theme.of(context).extension<AppSemanticColors>()!;
+    final tt = Theme.of(context).textTheme;
+
+    return Container(
+      padding: const EdgeInsets.all(AppSpacing.lg),
+      decoration: BoxDecoration(
+        color: sem.heroBg,
+        borderRadius: AppRadius.lg,
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            'Saldo Bersih',
+            style: tt.labelLarge?.copyWith(
+              color: sem.heroFg.withValues(alpha: 0.85),
+            ),
+          ),
+          const SizedBox(height: AppSpacing.xs),
+          Text(
+            summary.balanceFormatted,
+            style: tt.headlineMedium?.copyWith(
+              color: sem.heroFg,
+              fontWeight: FontWeight.w800,
+              letterSpacing: -0.5,
+            ),
+          ),
+          const SizedBox(height: AppSpacing.md),
+          Row(
+            children: [
+              Expanded(
+                child: _HeroMetricPill(
+                  icon: Icons.south_west_rounded,
+                  label: 'Pemasukan',
+                  value: summary.totalIncomeFormatted,
+                  fg: sem.heroFg,
+                ),
+              ),
+              const SizedBox(width: AppSpacing.sm),
+              Expanded(
+                child: _HeroMetricPill(
+                  icon: Icons.north_east_rounded,
+                  label: 'Bulan Ini',
+                  value: summary.monthExpenseFormatted,
+                  fg: sem.heroFg,
+                ),
+              ),
+              const SizedBox(width: AppSpacing.sm),
+              Expanded(
+                child: _HeroMetricPill(
+                  icon: Icons.today_outlined,
+                  label: 'Hari Ini',
+                  value: summary.todayExpenseFormatted,
+                  fg: sem.heroFg,
+                ),
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _HeroMetricPill extends StatelessWidget {
+  final IconData icon;
+  final String label;
+  final String value;
+  final Color fg;
+
+  const _HeroMetricPill({
+    required this.icon,
+    required this.label,
+    required this.value,
+    required this.fg,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final tt = Theme.of(context).textTheme;
+
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 10),
+      decoration: BoxDecoration(
+        color: fg.withValues(alpha: 0.14),
+        borderRadius: AppRadius.md,
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Icon(icon, size: 14, color: fg.withValues(alpha: 0.85)),
+              const SizedBox(width: 4),
+              Expanded(
+                child: Text(
+                  label,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: tt.labelSmall?.copyWith(
+                    color: fg.withValues(alpha: 0.85),
+                  ),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 4),
+          Text(
+            value,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: tt.labelLarge?.copyWith(
+              color: fg,
+              fontWeight: FontWeight.w700,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _QuickEntryCard extends StatelessWidget {
   final TextEditingController controller;
   final bool submitting;
   final String? statusMessage;
   final bool isError;
   final VoidCallback onSubmit;
 
-  const _SmartEntryCard({
+  const _QuickEntryCard({
     required this.controller,
     required this.submitting,
     required this.statusMessage,
@@ -254,18 +407,9 @@ class _SmartEntryCard extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Row(
-            children: [
-              Icon(Icons.edit_note, color: cs.primary, size: 20),
-              const SizedBox(width: AppSpacing.sm),
-              Text(
-                'Catat Transaksi',
-                style: tt.titleSmall?.copyWith(
-                  color: cs.primary,
-                  fontWeight: FontWeight.w700,
-                ),
-              ),
-            ],
+          Text(
+            'Catat Transaksi',
+            style: tt.titleSmall?.copyWith(fontWeight: FontWeight.w700),
           ),
           const SizedBox(height: AppSpacing.sm),
           Row(
@@ -280,12 +424,9 @@ class _SmartEntryCard extends StatelessWidget {
                 ),
               ),
               const SizedBox(width: AppSpacing.sm),
-              SizedBox(
-                height: 48,
-                child: FilledButton(
-                  onPressed: submitting ? null : onSubmit,
-                  child: Text(submitting ? '...' : 'Catat'),
-                ),
+              FilledButton(
+                onPressed: submitting ? null : onSubmit,
+                child: Text(submitting ? '...' : 'Catat'),
               ),
             ],
           ),
@@ -298,97 +439,6 @@ class _SmartEntryCard extends StatelessWidget {
               ),
             ),
           ],
-        ],
-      ),
-    );
-  }
-}
-
-class _SummaryGrid extends StatelessWidget {
-  final FinancialSummary summary;
-
-  const _SummaryGrid({required this.summary});
-
-  @override
-  Widget build(BuildContext context) {
-    final cs = Theme.of(context).colorScheme;
-
-    return GridView.count(
-      crossAxisCount: 2,
-      shrinkWrap: true,
-      physics: const NeverScrollableScrollPhysics(),
-      crossAxisSpacing: AppSpacing.sm,
-      mainAxisSpacing: AppSpacing.sm,
-      childAspectRatio: 2.0,
-      children: [
-        _StatCard(
-          label: 'Saldo Bersih',
-          value: summary.balanceFormatted,
-          accent: cs.primary,
-        ),
-        _StatCard(
-          label: 'Pengeluaran Hari Ini',
-          value: summary.todayExpenseFormatted,
-          accent: cs.error,
-        ),
-        _StatCard(
-          label: 'Total Pemasukan',
-          value: summary.totalIncomeFormatted,
-          accent: cs.tertiary,
-        ),
-        _StatCard(
-          label: 'Pengeluaran Bulan Ini',
-          value: summary.monthExpenseFormatted,
-          accent: cs.secondary,
-        ),
-      ],
-    );
-  }
-}
-
-class _StatCard extends StatelessWidget {
-  final String label;
-  final String value;
-  final Color accent;
-
-  const _StatCard({
-    required this.label,
-    required this.value,
-    required this.accent,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    final cs = Theme.of(context).colorScheme;
-    final tt = Theme.of(context).textTheme;
-
-    return Container(
-      padding: const EdgeInsets.all(12),
-      decoration: BoxDecoration(
-        color: cs.surfaceContainerLow,
-        borderRadius: AppRadius.lg,
-        border: Border.all(color: cs.outlineVariant),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: [
-          Text(
-            label,
-            maxLines: 1,
-            overflow: TextOverflow.ellipsis,
-            style: tt.labelSmall?.copyWith(color: cs.onSurfaceVariant),
-          ),
-          const SizedBox(height: 4),
-          Text(
-            value,
-            maxLines: 1,
-            overflow: TextOverflow.ellipsis,
-            style: tt.titleMedium?.copyWith(
-              color: accent,
-              fontWeight: FontWeight.w700,
-            ),
-          ),
         ],
       ),
     );
@@ -420,7 +470,7 @@ class _CategoryBreakdownCard extends StatelessWidget {
         children: categories.take(5).map((cat) {
           final ratio = (cat.total / maxTotal).clamp(0.05, 1.0);
           return Padding(
-            padding: const EdgeInsets.only(bottom: AppSpacing.sm),
+            padding: const EdgeInsets.only(bottom: 10),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
@@ -433,16 +483,19 @@ class _CategoryBreakdownCard extends StatelessWidget {
                     ),
                     Text(
                       'Rp ${cat.total.toStringAsFixed(0)}',
-                      style: tt.bodySmall?.copyWith(color: cs.onSurfaceVariant),
+                      style: tt.bodySmall?.copyWith(
+                        color: cs.onSurfaceVariant,
+                        fontWeight: FontWeight.w600,
+                      ),
                     ),
                   ],
                 ),
-                const SizedBox(height: 4),
+                const SizedBox(height: 6),
                 ClipRRect(
                   borderRadius: AppRadius.full,
                   child: LinearProgressIndicator(
                     value: ratio,
-                    minHeight: 6,
+                    minHeight: 7,
                     backgroundColor: cs.surfaceContainerHighest,
                   ),
                 ),
@@ -455,11 +508,11 @@ class _CategoryBreakdownCard extends StatelessWidget {
   }
 }
 
-class _TransactionTile extends StatelessWidget {
+class _TransactionRow extends StatelessWidget {
   final TransactionItem item;
   final VoidCallback onDelete;
 
-  const _TransactionTile({
+  const _TransactionRow({
     required this.item,
     required this.onDelete,
   });
@@ -467,27 +520,28 @@ class _TransactionTile extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
+    final sem = Theme.of(context).extension<AppSemanticColors>()!;
     final tt = Theme.of(context).textTheme;
     final isIncome = item.type.toLowerCase() == 'income';
+    final amountColor = isIncome ? sem.income : sem.expense;
 
-    return Container(
-      margin: const EdgeInsets.only(bottom: AppSpacing.sm),
+    return Padding(
       padding: const EdgeInsets.symmetric(
         horizontal: AppSpacing.md,
         vertical: 12,
       ),
-      decoration: BoxDecoration(
-        color: cs.surfaceContainerLow,
-        borderRadius: AppRadius.lg,
-        border: Border.all(color: cs.outlineVariant),
-      ),
       child: Row(
         children: [
-          CircleAvatar(
-            backgroundColor: (isIncome ? cs.primary : cs.error).withValues(alpha: 0.16),
+          Container(
+            width: 40,
+            height: 40,
+            decoration: BoxDecoration(
+              color: amountColor.withValues(alpha: 0.1),
+              borderRadius: AppRadius.md,
+            ),
             child: Icon(
-              isIncome ? Icons.arrow_downward : Icons.arrow_upward,
-              color: isIncome ? cs.primary : cs.error,
+              isIncome ? Icons.south_west_rounded : Icons.north_east_rounded,
+              color: amountColor,
               size: 18,
             ),
           ),
@@ -514,7 +568,7 @@ class _TransactionTile extends StatelessWidget {
               Text(
                 item.amountFormatted,
                 style: tt.titleSmall?.copyWith(
-                  color: isIncome ? cs.primary : cs.error,
+                  color: amountColor,
                   fontWeight: FontWeight.w700,
                 ),
               ),
